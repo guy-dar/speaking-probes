@@ -1,0 +1,6 @@
+Here are some words and their connotations.
+- <param_25_2600> is related to the words: Tracker, charts, tracker, measurement, gauge, tracking, Meter
+- <param_21_3419> is related to the words: poorest, Poverty, malnutrition, homelessness, homeless
+- <param_0_300> is related to the words: Fiji, Hawaii, sharks, Nations, reefs, Singapore
+- <param_0_898> is related to the words: corruption, interests, involvement, plot, Scandal, intrigue, rivalry
+- <neuron> is related to

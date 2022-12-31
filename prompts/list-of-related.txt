@@ -1,0 +1,2 @@
+// the following variable enumerates all the strings related to <neuron>
+related_strings = [' <neuron>',

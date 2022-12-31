@@ -1,0 +1,6 @@
+- Synonyms of small: small, little, tiny, not big
+- Synonyms of clever: clever, smart, intelligent, wise
+- Synonyms of USA: USA, US, United States
+- Synonyms of Paris: Paris, city of lights, city of love, capital of France
+- Synonyms of error: error, mistake, fallacy, wrong
+- Synonyms of <neuron>:
