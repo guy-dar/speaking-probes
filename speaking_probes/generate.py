@@ -1,3 +1,4 @@
+import re
 import numpy as np
 from copy import deepcopy
 import matplotlib.pyplot as plt
@@ -174,14 +175,29 @@ class ParamListStructureEnforcer(LogitsProcessor):
     
 
 # speaking probe
+def _preprocess_prompt(model_params, prompt):
+    K_heads = model_params.K_heads
+    prompt = re.sub(r'([^ ]|\A)(<neuron>|<param_\d+_\d+>)', lambda m: f'{m.group(1)} {m.group(2)}', prompt)
+    param_neuron_idxs = [(int(a), int(b)) for a, b in re.findall(r' <param_(\d+)_(\d+)>', prompt)]
+    param_neuron_tokens = [f' <param_{a}_{b}>' for a, b in param_neuron_idxs]
+    param_neurons = [deepcopy(K_heads[a, b]) for a, b in param_neuron_idxs]
+    return prompt, param_neuron_tokens, param_neurons
+
+
 def speaking_probe(model, model_params, tokenizer, prompt, *neurons,
                    num_generations=1, layer_range=None, bad_words_ids=[], output_neurons=False,
                    return_outputs=False, logits_processor=LogitsProcessorList([]), **kwargs):
     num_non_neuron_tokens = len(tokenizer)
     tokenizer_with_neurons = deepcopy(tokenizer)
+    
+    # adding neurons to the tokenizer
+    neuron_tokens = [f" <neuron{i+1 if i > 0 else ''}>" for i in range(len(neurons))]
+    prompt, param_neuron_tokens, param_neurons = _preprocess_prompt(model_params, prompt)
+    neuron_tokens.extend(param_neuron_tokens)
+    neurons = neurons + tuple(param_neurons)
     has_extra_neurons = len(neurons) > 0
     if has_extra_neurons:
-        tokenizer_with_neurons.add_tokens([f" <neuron{i+1 if i > 0 else ''}>" for i in range(len(neurons))])
+        tokenizer_with_neurons.add_tokens(neuron_tokens)
         model.resize_token_embeddings(len(tokenizer_with_neurons))
         model.transformer.wte.weight.data[-len(neurons):] = torch.stack(neurons, dim=0)
         
@@ -209,7 +225,8 @@ def speaking_probe(model, model_params, tokenizer, prompt, *neurons,
                              **kwargs)
 
     decoded = tokenizer_with_neurons.batch_decode(outputs.sequences, skip_special_tokens=True)
-        
+    
+    # TODO: add `finally` statement
     if has_extra_neurons:
         model.resize_token_embeddings(num_non_neuron_tokens)
         model.transformer.wte.weight.data = model.transformer.wte.weight.data[:num_non_neuron_tokens]
