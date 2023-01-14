@@ -1,3 +1,4 @@
+from copy import deepcopy
 import heapq
 import numpy as np
 import pandas as pd
@@ -73,10 +74,12 @@ class TopkTracker:
         
 
 def corpus_search(model, tokenizer, corpus, layer_path, dim_idx, k=5,
-                 max_seq_length=128, batch_size=4):    
+                 max_seq_length=128, batch_size=4, normalize=False):    
     def _hook_fn(self, inp, outp):
-        # outp, *_ = outp
-        activation = outp[:, :, dim_idx].cpu().detach()
+        outp = outp.detach().cpu()
+        if normalize:
+            outp = F.normalize(outp, dim=-1)
+        activation = outp[:, :, dim_idx]
         max_acts, max_idxs = activation.max(dim=1)
         for i in range(len(activation)):
             topk_tracker.add(key=(sentences[i], max_idxs[i].item()), score=max_acts[i].item())
@@ -90,7 +93,9 @@ def corpus_search(model, tokenizer, corpus, layer_path, dim_idx, k=5,
                                max_length=max_seq_length, return_tensors='pt')
             model(**dict_to_device(inputs, model.device))
         hook.remove()
-        return topk_tracker.keys()
+    except e:
+        print(e)
     finally:
         print("removing hook..")
         hook.remove()
+        return topk_tracker.keys()

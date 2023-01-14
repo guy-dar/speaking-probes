@@ -82,7 +82,7 @@ def extract_gpt_j_parameters(model, full=False):
     hidden_dim = model.config.n_embd
     head_size = hidden_dim // num_heads
 
-    K = torch.cat([model.get_parameter(f"transformer.h.{j}.mlp.fc_in.weight").T
+    K = torch.cat([model.get_parameter(f"transformer.h.{j}.mlp.fc_in.weight")
                                for j in range(num_layers)]).detach()
 
     K_heads = K.reshape(num_layers, -1, hidden_dim)
@@ -93,20 +93,20 @@ def extract_gpt_j_parameters(model, full=False):
 
     if full:
         raise NotImplementedError
-#         emb = model.get_output_embeddings().weight.data.T
-#         V = torch.cat([model.get_parameter(f"transformer.h.{j}.mlp.c_proj.weight")
-#                                for j in range(num_layers)]).detach()
+        emb = model.get_output_embeddings().weight.data.T
+        V = torch.cat([model.get_parameter(f"transformer.h.{j}.mlp.c_out.weight").T
+                               for j in range(num_layers)]).detach()
 #         W_Q, W_K, W_V = torch.cat([model.get_parameter(f"transformer.h.{j}.attn.c_attn.weight") 
 #                                    for j in range(num_layers)]).detach().chunk(3, dim=-1)
 #         W_O = torch.cat([model.get_parameter(f"transformer.h.{j}.attn.c_proj.weight") 
 #                                    for j in range(num_layers)]).detach()
 
-#         model_params.V_heads = V.reshape(num_layers, -1, hidden_dim)
+        model_params.V_heads = V.reshape(num_layers, -1, hidden_dim)
 #         model_params.W_V_heads = W_V.reshape(num_layers, hidden_dim, num_heads, head_size).permute(0, 2, 1, 3)
 #         model_params.W_O_heads = W_O.reshape(num_layers, num_heads, head_size, hidden_dim)
 #         model_params.W_Q_heads = W_Q.reshape(num_layers, hidden_dim, num_heads, head_size).permute(0, 2, 1, 3)
 #         model_params.W_K_heads = W_K.reshape(num_layers, hidden_dim, num_heads, head_size).permute(0, 2, 1, 3)
-#         model_params.emb = emb
+        model_params.emb = emb
     return model_params
 
 
@@ -177,8 +177,8 @@ class ParamListStructureEnforcer(LogitsProcessor):
 # speaking probe
 def _preprocess_prompt(model_params, prompt):
     K_heads = model_params.K_heads
-    prompt = re.sub(r'([^ ]|\A)(<neuron>|<param_\d+_\d+>)', lambda m: f'{m.group(1)} {m.group(2)}', prompt)
-    param_neuron_idxs = [(int(a), int(b)) for a, b in re.findall(r' <param_(\d+)_(\d+)>', prompt)]
+    prompt = re.sub(r'([^ ]|\A)(<neuron\d*>|<param_\d+_\d+>)', lambda m: f'{m.group(1)} {m.group(2)}', prompt)
+    param_neuron_idxs = set([(int(a), int(b)) for a, b in re.findall(r' <param_(\d+)_(\d+)>', prompt)])
     param_neuron_tokens = [f' <param_{a}_{b}>' for a, b in param_neuron_idxs]
     param_neurons = [deepcopy(K_heads[a, b]) for a, b in param_neuron_idxs]
     return prompt, param_neuron_tokens, param_neurons
