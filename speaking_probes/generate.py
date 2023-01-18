@@ -126,7 +126,6 @@ def extend_model_and_tokenizer(model, model_params, tokenizer, min_layer=0,
     if max_layer is None:
         max_layer = len(model_params.ff_keys)-1
     relevant_neurons = model_params.ff_keys[min_layer:max_layer+1]
-    num_regular_tokens = len(tokenizer)
     new_tokens = [f" <param_{layer}_{dim}>"  for layer in range(min_layer, max_layer+1) 
                                              for dim in range(relevant_neurons.shape[1])]
 
@@ -201,8 +200,30 @@ def _preprocess_prompt(model_params, prompt):
 
 
 def speaking_probe(model, model_params, tokenizer, prompt, *neurons,
-                   num_generations=1, layer_range=None, bad_words_ids=[], output_neurons=False,
-                   return_outputs=False, logits_processor=LogitsProcessorList([]), **kwargs):
+                   num_generations=1, output_neurons=False, return_outputs=False, 
+                   logits_processor=None, **kwargs):
+    '''
+    Args:
+        model: the huggingface model to compute the speaking probe on
+        model_params: the ModelParameters object extract from the model 
+        tokenizer: the huggingface tokenizer for the model
+        prompt: the prompt to run on
+        neurons: the neuron vectors for the tokens <neuron>, <neuron2>, etc
+        num_generations: the number of responses returned by the function
+        output_neurons: boolean. can the function output tokens like <neuron> or <param>
+                        as part of its responses. output_neurons=False is most appropriate
+                        for most applications.
+        return_outputs: boolean. should the model return the entire ModelOutputs object
+                        returned by model.generate()
+        logits_processor: a LogitsProcessor object to be passed to model.generate()
+        kwargs: the rest of the keyword arguments will be passed over to model.generate()
+    
+    Returns:
+        a list of responses. if return_outputs=True, returns a tuple where the first argument
+        is the list of responses and the second argument is the ModelOutputs object. 
+
+    '''
+
     num_non_neuron_tokens = len(tokenizer)
     tokenizer_with_neurons = deepcopy(tokenizer)
     
@@ -217,26 +238,28 @@ def speaking_probe(model, model_params, tokenizer, prompt, *neurons,
         model.resize_token_embeddings(len(tokenizer_with_neurons))
         model.transformer.wte.weight.data[-len(neurons):] = torch.stack(neurons, dim=0)
         
-    logits_processor = deepcopy(logits_processor)
+    if logits_processor is None:
+        logits_processor = LogitsProcessorList([])
+
+    # logits_processor = deepcopy(logits_processor)
     
     if not output_neurons:
         logits_processor.append(NeuronTokenBan(num_non_neuron_tokens))
     
-    if layer_range is not None:
-        num_layers = model_params.num_layers
-        min_layer, max_layer = layer_range
-        bad_words_ids = deepcopy(bad_words_ids)
-        bad_words_ids.extend([[encode(f" <param_{i}_{j}>", tokenizer)] 
-                                        for j in range(model_params.d_int) 
-                                        for i in [*range(min_layer), *range(max_layer+1, num_layers)]])
-    if len(bad_words_ids) == 0:
-        bad_words_ids = None
+    # if layer_range is not None:
+    #     num_layers = model_params.num_layers
+    #     min_layer, max_layer = layer_range
+    #     bad_words_ids = deepcopy(bad_words_ids)
+    #     bad_words_ids.extend([[encode(f" <param_{i}_{j}>", tokenizer)] 
+    #                                     for j in range(model_params.d_int) 
+    #                                     for i in [*range(min_layer), *range(max_layer+1, num_layers)]])
+    # if len(bad_words_ids) == 0:
+    #     bad_words_ids = None
         
     input_ids = tokenizer_with_neurons.encode(prompt, return_tensors='pt').to(model.device)
     input_ids = torch.cat([deepcopy(input_ids) for _ in range(num_generations)], dim=0)
     outputs = model.generate(input_ids, pad_token_id=model.config.eos_token_id, 
                              logits_processor=logits_processor, 
-                             bad_words_ids=bad_words_ids,
                              return_dict_in_generate=True,
                              **kwargs)
 
