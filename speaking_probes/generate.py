@@ -28,13 +28,13 @@ from argparse import ArgumentParser
 
 @dataclass
 class ModelParameters:
-    K_heads: torch.Tensor
+    ff_keys: torch.Tensor
     num_layers: int
     d_int: int
     num_heads: int
     hidden_dim: int
     head_size: int
-    V_heads: torch.Tensor = None
+    ff_values: torch.Tensor = None
     W_Q_heads: torch.Tensor = None
     W_K_heads: torch.Tensor = None
     W_V_heads: torch.Tensor = None
@@ -52,9 +52,9 @@ def extract_gpt_parameters(model, full=False):
     K = torch.cat([model.get_parameter(f"transformer.h.{j}.mlp.c_fc.weight").T
                                for j in range(num_layers)]).detach()
 
-    K_heads = K.reshape(num_layers, -1, hidden_dim)
-    d_int = K_heads.shape[1]
-    model_params = ModelParameters(K_heads=K_heads, num_layers=num_layers, d_int=d_int,
+    ff_keys = K.reshape(num_layers, -1, hidden_dim)
+    d_int = ff_keys.shape[1]
+    model_params = ModelParameters(ff_keys=ff_keys, num_layers=num_layers, d_int=d_int,
                                    hidden_dim=hidden_dim, head_size=head_size, 
                                    num_heads=num_heads)
 
@@ -67,7 +67,7 @@ def extract_gpt_parameters(model, full=False):
         W_O = torch.cat([model.get_parameter(f"transformer.h.{j}.attn.c_proj.weight") 
                                    for j in range(num_layers)]).detach()
 
-        model_params.V_heads = V.reshape(num_layers, -1, hidden_dim)
+        model_params.ff_values = V.reshape(num_layers, -1, hidden_dim)
         model_params.W_V_heads = W_V.reshape(num_layers, hidden_dim, num_heads, head_size).permute(0, 2, 1, 3)
         model_params.W_O_heads = W_O.reshape(num_layers, num_heads, head_size, hidden_dim)
         model_params.W_Q_heads = W_Q.reshape(num_layers, hidden_dim, num_heads, head_size).permute(0, 2, 1, 3)
@@ -84,10 +84,9 @@ def extract_gpt_j_parameters(model, full=False):
 
     K = torch.cat([model.get_parameter(f"transformer.h.{j}.mlp.fc_in.weight")
                                for j in range(num_layers)]).detach()
-
-    K_heads = K.reshape(num_layers, -1, hidden_dim)
-    d_int = K_heads.shape[1]
-    model_params = ModelParameters(K_heads=K_heads, num_layers=num_layers, d_int=d_int,
+    ff_keys = K.reshape(num_layers, -1, hidden_dim)
+    d_int = ff_keys.shape[1]
+    model_params = ModelParameters(ff_keys=ff_keys, num_layers=num_layers, d_int=d_int,
                                    hidden_dim=hidden_dim, head_size=head_size, 
                                    num_heads=num_heads)
 
@@ -101,7 +100,7 @@ def extract_gpt_j_parameters(model, full=False):
 #         W_O = torch.cat([model.get_parameter(f"transformer.h.{j}.attn.c_proj.weight") 
 #                                    for j in range(num_layers)]).detach()
 
-        model_params.V_heads = V.reshape(num_layers, -1, hidden_dim)
+        model_params.ff_values = V.reshape(num_layers, -1, hidden_dim)
 #         model_params.W_V_heads = W_V.reshape(num_layers, hidden_dim, num_heads, head_size).permute(0, 2, 1, 3)
 #         model_params.W_O_heads = W_O.reshape(num_layers, num_heads, head_size, hidden_dim)
 #         model_params.W_Q_heads = W_Q.reshape(num_layers, hidden_dim, num_heads, head_size).permute(0, 2, 1, 3)
@@ -125,8 +124,8 @@ def read_and_go(path):
 def extend_model_and_tokenizer(model, model_params, tokenizer, min_layer=0, 
                                max_layer=None):
     if max_layer is None:
-        max_layer = len(model_params.K_heads)-1
-    relevant_neurons = model_params.K_heads[min_layer:max_layer+1]
+        max_layer = len(model_params.ff_keys)-1
+    relevant_neurons = model_params.ff_keys[min_layer:max_layer+1]
     num_regular_tokens = len(tokenizer)
     new_tokens = [f" <param_{layer}_{dim}>"  for layer in range(min_layer, max_layer+1) 
                                              for dim in range(relevant_neurons.shape[1])]
@@ -176,11 +175,11 @@ class ParamListStructureEnforcer(LogitsProcessor):
 
 # speaking probe
 def _preprocess_prompt(model_params, prompt):
-    K_heads = model_params.K_heads
+    ff_keys = model_params.ff_keys
     prompt = re.sub(r'([^ ]|\A)(<neuron\d*>|<param_\d+_\d+>)', lambda m: f'{m.group(1)} {m.group(2)}', prompt)
     param_neuron_idxs = set([(int(a), int(b)) for a, b in re.findall(r' <param_(\d+)_(\d+)>', prompt)])
     param_neuron_tokens = [f' <param_{a}_{b}>' for a, b in param_neuron_idxs]
-    param_neurons = [deepcopy(K_heads[a, b]) for a, b in param_neuron_idxs]
+    param_neurons = [deepcopy(ff_keys[a, b]) for a, b in param_neuron_idxs]
     return prompt, param_neuron_tokens, param_neurons
 
 
@@ -272,7 +271,7 @@ if __name__ == "__main__":
     model = model.to(device)
     
     i1, i2 = map(lambda x: int(x.strip()), args.neuron.split(','))
-    neuron = model_params.K_heads[i1, i2]
+    neuron = model_params.ff_keys[i1, i2]
     neurons = [neuron]
 
     print(prompt)
