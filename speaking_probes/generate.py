@@ -175,6 +175,23 @@ class ParamListStructureEnforcer(LogitsProcessor):
 
 # speaking probe
 def _preprocess_prompt(model_params, prompt):
+    '''
+    internal function for preprocessing a prompt before handing over to tokenizer:
+
+    1. prepends a space before "<neuron>" (and "<neuron2>", "<neuron3>", etc.) or "<param_i_j>" 
+       there isn't one before the token (e.g. in the beginning of a sequence or when preceded
+       by a quotation mark or parenthesis). the tokenizer only identifies the tokens 
+       " <neuron>" (" <neuron2>", " <neuron3>",...) and " <param_i_j>".
+       for example:
+        the word "<neuron>" is cool ---> the word " <neuron>" is cool
+    
+    2. returns all parameters that appear in the prompt. these parameters will be added to the 
+       tokenizer (temporarily) in the main `speaking_probe` function. this saves us the overhead
+       of adding ALL parameters. for each parameter we return its token (so the tokenizer will be
+       identify it in the main function), and its vector representation (that will serve as its 
+       embedding vector when we feed it into the model)
+    '''
+
     ff_keys = model_params.ff_keys
     prompt = re.sub(r'([^ ]|\A)(<neuron\d*>|<param_\d+_\d+>)', lambda m: f'{m.group(1)} {m.group(2)}', prompt)
     param_neuron_idxs = set([(int(a), int(b)) for a, b in re.findall(r' <param_(\d+)_(\d+)>', prompt)])
